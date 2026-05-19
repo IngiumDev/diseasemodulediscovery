@@ -19,6 +19,7 @@ include { DIGEST as DIGEST_REFERENCEFREE    } from '../modules/local/digest/main
 include { DIGEST as DIGEST_REFERENCEBASED   } from '../modules/local/digest/main'
 include { MODULEOVERLAP                     } from '../modules/local/moduleoverlap/main'
 include { DRUGPREDICTIONS                   } from '../modules/local/drugpredictions/main'
+include { PREPAREDRUGPRIORITIZATIONINPUTS   } from '../modules/local/preparedrugprioritizationinputs/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG }              from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_TARGET }   from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_IND }      from '../modules/local/prioritizationevaluation/main'
@@ -502,7 +503,15 @@ workflow DISEASEMODULEDISCOVERY {
     */
 
     if(!params.skip_drug_predictions){
-        def valid_algorithms = ['trustrank', 'closeness', 'degree']
+        def valid_algorithms = ['trustrank', 'closeness', 'degree'] // is there not a better place to define this?
+        def drug_ch = DOWNLOAD_DRUG('drug')
+        def drug_has_target_ch = DOWNLOAD_DRUG_HAS_TARGET('drug_has_target')
+
+        PREPAREDRUGPRIORITIZATIONINPUTS(
+            ch_network_gt,
+            drug_has_target_ch.first(),
+            drug_ch.first()
+        )
 
         // Split the algorithms and check if they are valid
         ch_algorithms_drugs = Channel
@@ -548,7 +557,6 @@ workflow DISEASEMODULEDISCOVERY {
         }
 
         if( params.true_drugs ) {
-            def drug_ch = DOWNLOAD_DRUG('drug')
 
             def seedFiles     = params.seeds.split(',').collect { it.trim() }
             def trueDrugInputs   = params.true_drugs.split(',').collect { it.trim() }
@@ -577,7 +585,6 @@ workflow DISEASEMODULEDISCOVERY {
             } else {
 
                 // Extra CSVs via your aliased modules
-                def drug_has_target_ch     = DOWNLOAD_DRUG_HAS_TARGET('drug_has_target')
                 def drug_has_indication_ch = DOWNLOAD_DRUG_HAS_IND('drug_has_indication')
 
                 // Attach an index to preserve original order
