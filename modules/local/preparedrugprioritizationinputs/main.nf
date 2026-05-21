@@ -11,6 +11,8 @@ process PREPAREDRUGPRIORITIZATIONINPUTS {
         tuple val(meta), path("${meta.id}.drug_prioritization.gt") , emit: drug_prioritization_graph
         tuple val(meta), path("${meta.id}.drug_background.tsv")    , emit: drug_background
         tuple val(meta), path("${meta.id}.pdi.gt")                 , emit: pdi_graph
+        tuple val(meta), path("${meta.id}.netmedpy_ppi.pkl", optional: true)          , emit: netmedpy_ppi
+        tuple val(meta), path("${meta.id}.netmedpy_drug_targets.pkl", optional: true) , emit: netmedpy_drug_targets
 
     when:
         task.ext.when == null || task.ext.when
