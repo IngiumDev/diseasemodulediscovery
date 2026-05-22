@@ -20,6 +20,7 @@ include { DIGEST as DIGEST_REFERENCEBASED   } from '../modules/local/digest/main
 include { MODULEOVERLAP                     } from '../modules/local/moduleoverlap/main'
 include { DRUGPREDICTIONS                   } from '../modules/local/drugpredictions/main'
 include { PREPAREDRUGPRIORITIZATIONINPUTS   } from '../modules/local/preparedrugprioritizationinputs/main'
+include { PRECOMPUTENETMEDPYDISTANCES       } from '../modules/local/precomputenetmedpydistances/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG }              from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_TARGET }   from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_IND }      from '../modules/local/prioritizationevaluation/main'
@@ -503,7 +504,11 @@ workflow DISEASEMODULEDISCOVERY {
     */
 
     if(!params.skip_drug_predictions){
-        def valid_algorithms = ['trustrank', 'closeness', 'degree'] // is there not a better place to define this?
+        def valid_algorithms = ['trustrank', 'closeness', 'degree', 'network_proximity', 'network_separation'] // is there not a better place to define this?
+        def selected_drug_algorithms = params.drugstone_algorithms.split(',').collect { it.trim() }
+        def run_netmedpy_precompute = selected_drug_algorithms.any { algorithm ->
+            algorithm == 'network_proximity' || algorithm == 'network_separation'
+        }
         def drug_ch = DOWNLOAD_DRUG('drug')
         def drug_has_target_ch = DOWNLOAD_DRUG_HAS_TARGET('drug_has_target')
 
@@ -513,9 +518,13 @@ workflow DISEASEMODULEDISCOVERY {
             drug_ch.first()
         )
 
+        if(run_netmedpy_precompute){
+            PRECOMPUTENETMEDPYDISTANCES(PREPAREDRUGPRIORITIZATIONINPUTS.out.netmedpy_ppi)
+        }
+
         // Split the algorithms and check if they are valid
         ch_algorithms_drugs = Channel
-            .of(params.drugstone_algorithms.split(','))
+            .of(selected_drug_algorithms)
             .filter { algorithm ->
                 if (!valid_algorithms.contains(algorithm)) {
                     throw new IllegalArgumentException("Invalid algorithm: $algorithm. Must be one of: ${valid_algorithms.join(', ')}")
