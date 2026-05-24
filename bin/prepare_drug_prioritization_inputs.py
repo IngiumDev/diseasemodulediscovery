@@ -7,6 +7,7 @@ This script builds the network-level inputs used by offline drug prioritization:
 * a PDI-only graph-tool graph
 * a merged PPI + PDI graph-tool graph
 * a PPI-specific drug background table
+* a NetworkX PPI graph and drug-target dictionary for netmedpy
 
 The input ``drug_has_target`` table is expected to use UniProt identifiers on the
 target side. The output protein/gene identifiers are converted into the same
@@ -18,6 +19,7 @@ from __future__ import annotations
 import ast
 import argparse
 import logging
+import pickle
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -25,6 +27,7 @@ from typing import Iterable
 import graph_tool.all as gt
 import networkx as nx
 import pandas as pd
+import pyintergraph
 from gprofiler import GProfiler
 
 logger = logging.getLogger(__name__)
@@ -125,6 +128,19 @@ def parse_args():
         type=Path,
         help="Output merged PPI + PDI graph-tool graph. Defaults to '<prefix>.drug_prioritization.gt'.",
     )
+    outputs.add_argument(
+        "--netmedpy-ppi-output",
+        type=Path,
+        help="Output netmedpy NetworkX PPI pickle. Defaults to '<prefix>.netmedpy_ppi.pkl'.",
+    )
+    outputs.add_argument(
+        "--netmedpy-drug-targets-output",
+        type=Path,
+        help=(
+            "Output netmedpy drug-target dictionary pickle. "
+            "Defaults to '<prefix>.netmedpy_drug_targets.pkl'."
+        ),
+    )
 
     parser.add_argument(
         "-l",
@@ -204,6 +220,14 @@ def require_columns(df: pd.DataFrame, required_columns: Iterable[str], source_na
         raise ValueError(f"{source_name} is missing required columns: {missing}")
 
 
+def remove_graph_tool_self_loops(graph: gt.Graph) -> int:
+    """Remove self-loop edges from a graph-tool graph and return the count."""
+    self_loops = [edge for edge in graph.edges() if edge.source() == edge.target()]
+    for edge in self_loops:
+        graph.remove_edge(edge)
+    return len(self_loops)
+
+
 def load_ppi_gt_graph(ppi_path: Path) -> tuple[gt.Graph, set[str]]:
     """Load a pipeline graph-tool PPI graph and return its node IDs.
 
@@ -218,6 +242,7 @@ def load_ppi_gt_graph(ppi_path: Path) -> tuple[gt.Graph, set[str]]:
     """
     logger.info("Loading PPI graph from %s", ppi_path)
     graph = gt.load_graph(str(ppi_path))
+    removed_self_loops = remove_graph_tool_self_loops(graph)
 
     if "name" not in graph.vp:
         raise ValueError(
@@ -230,6 +255,8 @@ def load_ppi_gt_graph(ppi_path: Path) -> tuple[gt.Graph, set[str]]:
 
     if graph.is_directed():
         logger.warning("Input PPI graph is directed; merged prioritization graph will still be undirected.")
+    if removed_self_loops:
+        logger.warning("Removed %d PPI self-loop edges from %s", removed_self_loops, ppi_path)
 
     logger.info("Loaded %d PPI nodes", len(ppi_nodes))
     logger.info("Loaded %d PPI edges", graph.num_edges())
@@ -549,7 +576,7 @@ def filter_approved_drug_interactions(
     logger.info("PDI rows after approved-only filtering: %d", len(filtered))
     return filtered
 
-
+# TODO: understand why duplicates occur
 def fetch_uniprot_conversion_map(
     uniprot_ids: set[str],
     id_space: str,
@@ -673,7 +700,7 @@ def _add_vertex(
     vertex_by_id: dict[str, gt.Vertex],
     node_id: str,
     vertex_properties: dict,
-    values: dict[str, str],
+    values: dict[str, str | bool],
 ):
     """Return an existing vertex or create a new vertex with minimal node properties.
 
@@ -682,6 +709,8 @@ def _add_vertex(
     - ``name``: display name for drugs only; empty for protein/gene nodes
     - ``namespace``: ID namespace, e.g. ``entrez``, ``ensembl``, ``symbol``, ``uniprot``, ``drugbank``
     - ``type``: node class, currently ``protein/gene`` or ``drug``
+    - ``status``: drug status/groups string from metadata; empty for protein/gene nodes
+    - ``approved``: whether the drug status/groups include the approved entry
     """
     if node_id in vertex_by_id:
         return vertex_by_id[node_id]
@@ -701,6 +730,8 @@ def _new_prioritization_graph():
     - ``name``: drug display name; empty for protein/gene nodes
     - ``namespace``: source namespace for ``id``
     - ``type``: node class, ``protein/gene`` or ``drug``
+    - ``status``: drug status/groups string from metadata; empty for protein/gene nodes
+    - ``approved``: whether the drug status/groups include the approved entry
 
     Kept edge properties:
     - ``type``: interaction class, ``protein-protein`` or ``protein-drug``
@@ -711,6 +742,8 @@ def _new_prioritization_graph():
         "name": graph.new_vertex_property("string"),
         "namespace": graph.new_vertex_property("string"),
         "type": graph.new_vertex_property("string"),
+        "status": graph.new_vertex_property("string"),
+        "approved": graph.new_vertex_property("bool"),
         "edge_type": graph.new_edge_property("string"),
     }
     return graph, props
@@ -722,6 +755,8 @@ def _install_graph_properties(graph: gt.Graph, props: dict) -> None:
     graph.vp["name"] = props["name"]
     graph.vp["namespace"] = props["namespace"]
     graph.vp["type"] = props["type"]
+    graph.vp["status"] = props["status"]
+    graph.vp["approved"] = props["approved"]
     graph.ep["type"] = props["edge_type"]
 
 
@@ -733,6 +768,7 @@ def add_pdi_edges_to_graph(
     id_space: str,
     pdi_drug_column: str,
     drug_name_column: str,
+    drug_groups_column: str,
 ) -> None:
     """Add protein/gene, drug, and protein-drug edges from a filtered PDI table."""
     for _, row in pdi.iterrows():
@@ -749,6 +785,8 @@ def add_pdi_edges_to_graph(
                 "name": "",
                 "namespace": id_space,
                 "type": BIOLOGICAL_NODE_TYPE,
+                "status": "",
+                "approved": False,
             },
         )
         drug_vertex = _add_vertex(
@@ -761,6 +799,8 @@ def add_pdi_edges_to_graph(
                 "name": str(row.get(drug_name_column, drug_id)),
                 "namespace": "drugbank",
                 "type": DRUG_NODE_TYPE,
+                "status": str(row.get(drug_groups_column, "")),
+                "approved": bool(row.get("approved", False)),
             },
         )
 
@@ -773,6 +813,7 @@ def build_pdi_graph(
     id_space: str,
     pdi_drug_column: str,
     drug_name_column: str,
+    drug_groups_column: str,
 ) -> gt.Graph:
     """Build a PDI-only graph filtered to proteins/genes present in the PPI."""
     graph, props = _new_prioritization_graph()
@@ -785,6 +826,7 @@ def build_pdi_graph(
         id_space=id_space,
         pdi_drug_column=pdi_drug_column,
         drug_name_column=drug_name_column,
+        drug_groups_column=drug_groups_column,
     )
     _install_graph_properties(graph, props)
     return graph
@@ -804,6 +846,8 @@ def build_annotated_ppi_graph(
     - ``name``: empty for protein/gene nodes
     - ``namespace``: selected pipeline ID space
     - ``type``: ``protein/gene``
+    - ``status``: empty for protein/gene nodes
+    - ``approved``: ``False`` for protein/gene nodes
 
     Edge properties:
     - ``type``: ``protein-protein``
@@ -814,6 +858,8 @@ def build_annotated_ppi_graph(
         "name": graph.new_vertex_property("string"),
         "namespace": graph.new_vertex_property("string"),
         "type": graph.new_vertex_property("string"),
+        "status": graph.new_vertex_property("string"),
+        "approved": graph.new_vertex_property("bool"),
         "edge_type": graph.new_edge_property("string"),
     }
     vertex_by_id: dict[str, gt.Vertex] = {}
@@ -828,6 +874,8 @@ def build_annotated_ppi_graph(
         props["name"][vertex] = ""
         props["namespace"][vertex] = id_space
         props["type"][vertex] = BIOLOGICAL_NODE_TYPE
+        props["status"][vertex] = ""
+        props["approved"][vertex] = False
         vertex_by_id[node_id] = vertex
 
     seen_edges: set[tuple[str, str]] = set()
@@ -878,6 +926,8 @@ def add_pdi_drugs_and_edges(
                 "name": str(pdi_graph.vp["name"][vertex]),
                 "namespace": str(pdi_graph.vp["namespace"][vertex]),
                 "type": str(pdi_graph.vp["type"][vertex]),
+                "status": str(pdi_graph.vp["status"][vertex]),
+                "approved": bool(pdi_graph.vp["approved"][vertex]),
             },
         )
 
@@ -980,25 +1030,80 @@ def build_drug_background(
     return background
 
 
+def build_netmedpy_ppi_network(ppi_graph: gt.Graph) -> nx.Graph:
+    """Convert the PPI graph-tool graph to an LCC-only NetworkX graph."""
+    network = pyintergraph.gt2nx(ppi_graph, labelname="name")
+
+    if network.number_of_nodes() == 0:
+        logger.error("Cannot build netmedpy PPI network from an empty graph.")
+        raise SystemExit(1)
+
+    original_node_count = network.number_of_nodes()
+    component_nodes = max(nx.connected_components(network), key=len)
+    network.remove_nodes_from(set(network) - component_nodes)
+
+    logger.info(
+        "Built netmedpy PPI network from largest connected component: %d/%d nodes, %d edges",
+        network.number_of_nodes(),
+        original_node_count,
+        network.number_of_edges(),
+    )
+    return network
+
+
+def build_netmedpy_drug_targets(
+    pdi: pd.DataFrame,
+    ppi_network: nx.Graph,
+    pdi_drug_column: str,
+) -> dict[str, set[str]]:
+    """Build the netmedpy source dictionary, filtered to the PPI LCC."""
+    lcc_nodes = set(ppi_network.nodes)
+    lcc_pdi = pdi[pdi["converted_target_id"].isin(lcc_nodes)]
+
+    dropped_rows = len(pdi) - len(lcc_pdi)
+    if dropped_rows:
+        logger.info(
+            "Dropped %d PDI rows from netmedpy targets because targets are outside the PPI LCC",
+            dropped_rows,
+        )
+
+    drug_targets = {
+        drug_id: set(group["converted_target_id"])
+        for drug_id, group in lcc_pdi.groupby(pdi_drug_column, sort=True)
+    }
+
+    logger.info("Built netmedpy drug-target dictionary for %d drugs", len(drug_targets))
+    return drug_targets
+
+
 def save_outputs(
-    prefix: str,
     drug_background: pd.DataFrame,
     pdi_graph: gt.Graph,
     merged_graph: gt.Graph,
-    drug_background_output: Path | None = None,
-    pdi_graph_output: Path | None = None,
-    merged_graph_output: Path | None = None,
+    netmedpy_ppi: nx.Graph,
+    netmedpy_drug_targets: dict[str, set[str]],
+    drug_background_output: Path,
+    pdi_graph_output: Path,
+    merged_graph_output: Path,
+    netmedpy_ppi_output: Path,
+    netmedpy_drug_targets_output: Path,
 ) -> None:
     """Save graph and background outputs for this network."""
     output_paths = {
-        "drug_background": drug_background_output or Path(f"{prefix}.drug_background.tsv"),
-        "pdi_graph": pdi_graph_output or Path(f"{prefix}.pdi.gt"),
-        "merged_graph": merged_graph_output or Path(f"{prefix}.drug_prioritization.gt"),
+        "drug_background": drug_background_output,
+        "pdi_graph": pdi_graph_output,
+        "merged_graph": merged_graph_output,
+        "netmedpy_ppi": netmedpy_ppi_output,
+        "netmedpy_drug_targets": netmedpy_drug_targets_output,
     }
 
     drug_background.to_csv(output_paths["drug_background"], sep="\t", index=False)
     pdi_graph.save(str(output_paths["pdi_graph"]))
     merged_graph.save(str(output_paths["merged_graph"]))
+    with output_paths["netmedpy_ppi"].open("wb") as handle:
+        pickle.dump(netmedpy_ppi, handle)
+    with output_paths["netmedpy_drug_targets"].open("wb") as handle:
+        pickle.dump(netmedpy_drug_targets, handle)
 
     for label, path in output_paths.items():
         logger.info("Wrote %s: %s", label, path)
@@ -1013,6 +1118,14 @@ def main(args) -> None:
     logger.info("Arguments: %s", args)
 
     id_space = args.id_space
+    drug_background_output = args.drug_background_output or Path(f"{args.prefix}.drug_background.tsv")
+    pdi_graph_output = args.pdi_graph_output or Path(f"{args.prefix}.pdi.gt")
+    merged_graph_output = args.merged_graph_output or Path(f"{args.prefix}.drug_prioritization.gt")
+    netmedpy_ppi_output = args.netmedpy_ppi_output or Path(f"{args.prefix}.netmedpy_ppi.pkl")
+    netmedpy_drug_targets_output = (
+        args.netmedpy_drug_targets_output or Path(f"{args.prefix}.netmedpy_drug_targets.pkl")
+    )
+
     ppi_graph, ppi_nodes = load_ppi_graph(args.ppi, id_space=id_space)
 
     drugs = load_drug_metadata(
@@ -1087,6 +1200,7 @@ def main(args) -> None:
         id_space=id_space,
         pdi_drug_column=args.pdi_drug_column,
         drug_name_column=args.drug_name_column,
+        drug_groups_column=args.drug_groups_column,
     )
     merged_graph = build_merged_prioritization_graph(
         ppi_graph=ppi_graph,
@@ -1098,6 +1212,12 @@ def main(args) -> None:
         pdi_drug_column=args.pdi_drug_column,
         drug_name_column=args.drug_name_column,
         drug_groups_column=args.drug_groups_column,
+    )
+    netmedpy_ppi = build_netmedpy_ppi_network(ppi_graph)
+    netmedpy_drug_targets = build_netmedpy_drug_targets(
+        pdi=filtered_pdi,
+        ppi_network=netmedpy_ppi,
+        pdi_drug_column=args.pdi_drug_column,
     )
 
     unique_uniprots = len(input_uniprots)
@@ -1125,18 +1245,52 @@ def main(args) -> None:
     )
 
     save_outputs(
-        prefix=args.prefix,
         drug_background=drug_background,
         pdi_graph=pdi_graph,
         merged_graph=merged_graph,
-        drug_background_output=args.drug_background_output,
-        pdi_graph_output=args.pdi_graph_output,
-        merged_graph_output=args.merged_graph_output,
+        netmedpy_ppi=netmedpy_ppi,
+        netmedpy_drug_targets=netmedpy_drug_targets,
+        drug_background_output=drug_background_output,
+        pdi_graph_output=pdi_graph_output,
+        merged_graph_output=merged_graph_output,
+        netmedpy_ppi_output=netmedpy_ppi_output,
+        netmedpy_drug_targets_output=netmedpy_drug_targets_output,
     )
 
     logger.info("Final PDI rows: %d", len(filtered_pdi))
     logger.info("Final drug background size: %d", len(drug_background))
+    logger.info("Final netmedpy drug-target dictionary size: %d", len(netmedpy_drug_targets))
 
 
 if __name__ == "__main__":
+    # sys.argv = [
+    #     "prepare_drug_prioritization_inputs.py",
+    #     "--ppi",
+    #     "../../data/input/networks/string.human_links_v12_0_min700.Ensembl.gt",
+    #     "--pdi",
+    #     "../../data/nedrexdb_licensed/drug_has_target.csv",
+    #     "--drugs",
+    #     "../../data/nedrexdb_licensed/drug.csv",
+    #     "--prefix",
+    #     "string.human_links_v12_0_min700.Ensembl",
+    #     "--id-space",
+    #     "ensembl",
+    #     "-l",
+    #     "DEBUG",
+    # ]
+    # sys.argv = [
+    #     "prepare_drug_prioritization_inputs.py",
+    #     "--ppi",
+    #     "../../data/drugstone_unlicensed/NeDRex_2.1.52_protein-protein-interaction_download.graphml",
+    #     "--pdi",
+    #     "../../data/drugstone_unlicensed/NeDRex_2.1.52_protein-drug-interaction_download.graphml",
+    #     "--drugs",
+    #     "../../data/nedrexdb_licensed/drug.csv",
+    #     "--prefix",
+    #     "NeDRex_2.1.52_protein-protein-interaction_download.Ensembl",
+    #     "--id-space",
+    #     "ensembl",
+    #     "-l",
+    #     "DEBUG",
+    # ]
     main(parse_args())

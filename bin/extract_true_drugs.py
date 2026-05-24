@@ -8,7 +8,6 @@ plus helper functions to filter by approval status and translate identifiers.
 
 import argparse
 import ast
-import csv
 import logging
 import os
 import random
@@ -292,42 +291,5 @@ def main():
 
 
 if __name__ == "__main__":
+    #sys.argv = ['extract_true_drugs.py', '--drug-indicates', '../../data/nedrexdb_licensed/drug_has_indication.csv', '--disease-id', 'mondo.0000190', '--output-folder', './data', '--output-file', 'true_drugs.csv']
     main()
-
-
-def load_drugs_list(file_path: str) -> List[List[Union[str, int]]]:
-    """
-    Reads a CSV file of drugs with columns including:
-      drugId,label,status,drugstoneType,score,hasEdgesTo,isResult,isConnector
-
-    Filters to isResult == True, sorts by score descending,
-    and returns a ranked list of [ ["drugbank.<ID>", rank], ... ].
-
-    Args:
-        file_path: Path to the TSV file containing drug data.
-
-    Returns:
-        List[List[Union[str, int]]]: A list of lists, each containing a drug ID and its rank.
-    """
-    drugs = []
-    with open(file_path, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            # Only include rows marked as results
-            if row.get('isResult', '').strip().lower() == 'true':
-                try:
-                    score = float(row['score'])
-                except (KeyError, ValueError):
-                    continue
-                drug_id = row['drugId'].strip()
-                drugs.append((drug_id, score))
-
-    # Sort by score descending
-    drugs.sort(key=lambda x: x[1], reverse=True)
-
-    # Build ranked list
-    ranked = []
-    for idx, (drug_id, _) in enumerate(drugs, start=1):
-        ranked.append([f"drugbank.{drug_id}", idx])
-    logger.debug("Ranked drugs: %s", ranked)
-    return ranked

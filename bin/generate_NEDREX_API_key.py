@@ -1,13 +1,15 @@
 #!/usr/bin/env python
+import argparse
 from urllib.parse import urljoin
 
 import requests
-import argparse
+
+from validation_utils import join_url_path
 
 
 class NeDRexService:
     API_LINK = "https://exbio.wzw.tum.de/repo4eu_nedrex_licensed/"
-  #  API_LINK = "https://api.nedrex.net/licensed/"
+    # API_LINK = "https://api.nedrex.net/licensed/"
     CREDENTIALS_ROUTE = "admin/api_key/generate"
     PAGINATION_MAX_ROUTE = "pagination_max"
 
@@ -19,14 +21,7 @@ def get_api_key(base_url: str = None) -> dict | None:
     If base_url is provided, use it; otherwise use NeDRexService.API_LINK.
     Ensures the base_url ends with a slash before appending the credentials route.
     """
-    # Determine the base URL and ensure it ends with '/'
-    base = base_url or NeDRexService.API_LINK
-    if not base.endswith('/'):
-        base += '/'
-
-    # Ensure the route does not start with a slash to avoid '//' in the URL
-    route = NeDRexService.CREDENTIALS_ROUTE.lstrip('/')
-    url = base + route
+    url = join_url_path(base_url, NeDRexService.CREDENTIALS_ROUTE)
 
     headers = {'Content-Type': 'application/json'}
     payload = {"accept_eula": True}
@@ -40,7 +35,7 @@ def get_api_key(base_url: str = None) -> dict | None:
 
 
 def get_pagination_max(api_key, url) -> int:
-    url = urljoin(url, f"{NeDRexService.PAGINATION_MAX_ROUTE}")
+    url = join_url_path(url, NeDRexService.PAGINATION_MAX_ROUTE)
     headers = {'Content-Type': 'application/json', 'x-api-key': api_key}
     try:
         response = requests.get(url, headers=headers)
@@ -61,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-b", "--base-url",
         help="Custom base URL for the NeDRexService API (default uses the built-in URL).",
-        default=None
+        default=NeDRexService.API_LINK
     )
     # add argument to only print the API key
     parser.add_argument(
@@ -79,7 +74,7 @@ if __name__ == "__main__":
         exit(0)
     print(f"Generated API key: {api_key}")
 
-    pagination_max = get_pagination_max(str(api_key),args.base_url)
+    pagination_max = get_pagination_max(str(api_key), args.base_url)
     if not pagination_max:
         raise RuntimeError("Failed to retrieve pagination max.")
 

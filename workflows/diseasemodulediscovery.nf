@@ -21,6 +21,8 @@ include { MODULEOVERLAP                     } from '../modules/local/moduleoverl
 include { DRUGPREDICTIONS                   } from '../modules/local/drugpredictions/main'
 include { PREPAREDRUGPRIORITIZATIONINPUTS   } from '../modules/local/preparedrugprioritizationinputs/main'
 include { PRECOMPUTENETMEDPYDISTANCES       } from '../modules/local/precomputenetmedpydistances/main'
+include { DRUGPRIORITIZATIONOFFLINEGT       } from '../modules/local/drugprioritizationofflinegt/main'
+include { DRUGPRIORITIZATIONOFFLINENETMEDPY } from '../modules/local/drugprioritizationofflinenetmedpy/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG }              from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_TARGET }   from '../modules/local/prioritizationevaluation/main'
 include { DOWNLOADDRUGLIST as DOWNLOAD_DRUG_HAS_IND }      from '../modules/local/prioritizationevaluation/main'
@@ -506,6 +508,12 @@ workflow DISEASEMODULEDISCOVERY {
     if(!params.skip_drug_predictions){
         def valid_algorithms = ['trustrank', 'closeness', 'degree', 'network_proximity', 'network_separation'] // is there not a better place to define this?
         def selected_drug_algorithms = params.drugstone_algorithms.split(',').collect { it.trim() }
+        def selected_drug_algorithms_gt = selected_drug_algorithms.findAll { algorithm ->
+            algorithm == 'trustrank' || algorithm == 'closeness' || algorithm == 'degree'
+        }
+        def selected_drug_algorithms_netmedpy = selected_drug_algorithms.findAll { algorithm ->
+            algorithm == 'network_proximity' || algorithm == 'network_separation'
+        }
         def run_netmedpy_precompute = selected_drug_algorithms.any { algorithm ->
             algorithm == 'network_proximity' || algorithm == 'network_separation'
         }
@@ -522,15 +530,15 @@ workflow DISEASEMODULEDISCOVERY {
             PRECOMPUTENETMEDPYDISTANCES(PREPAREDRUGPRIORITIZATIONINPUTS.out.netmedpy_ppi)
         }
 
-        // Split the algorithms and check if they are valid
-        ch_algorithms_drugs = Channel
-            .of(selected_drug_algorithms)
-            .filter { algorithm ->
-                if (!valid_algorithms.contains(algorithm)) {
-                    throw new IllegalArgumentException("Invalid algorithm: $algorithm. Must be one of: ${valid_algorithms.join(', ')}")
-                }
-                return true
+        selected_drug_algorithms.each { algorithm ->
+            if (!valid_algorithms.contains(algorithm)) {
+                throw new IllegalArgumentException("Invalid algorithm: $algorithm. Must be one of: ${valid_algorithms.join(', ')}")
             }
+        }
+
+        ch_algorithms_drugstone = Channel.fromList(selected_drug_algorithms_gt)
+        ch_algorithms_offline_gt = Channel.fromList(selected_drug_algorithms_gt)
+        ch_algorithms_offline_netmedpy = Channel.fromList(selected_drug_algorithms_netmedpy)
 
         ch_drugstone_input = ch_nodes_tsv_not_empty
             .branch {meta, module ->
@@ -539,7 +547,7 @@ workflow DISEASEMODULEDISCOVERY {
             }
 
         ch_drugstone_input = ch_drugstone_input.pass
-            .combine(ch_algorithms_drugs)
+            .combine(ch_algorithms_drugstone)
             .map { meta, module, algorithm ->
                 [meta + [id: meta.id + "." + algorithm, drug_algorithm: algorithm], module, algorithm]
             }
@@ -551,6 +559,48 @@ workflow DISEASEMODULEDISCOVERY {
         includeNonApprovedDrugs = Channel.value(params.includeNonApprovedDrugs).map{it ? 1 : 0}
         DRUGPREDICTIONS(ch_drugstone_input.module, id_space, ch_drugstone_input.algorithm, includeIndirectDrugs, includeNonApprovedDrugs, params.result_size)
         ch_versions = ch_versions.mix(DRUGPREDICTIONS.out.versions)
+
+        ch_drug_prioritization_offline_gt_input = ch_nodes_tsv_not_empty
+            .map { meta, module -> [meta.network_id, meta, module] }
+            .combine(PREPAREDRUGPRIORITIZATIONINPUTS.out.drug_prioritization_graph.map { meta, graph -> [meta.network_id, graph] }, by: 0)
+            .map { network_id, meta, module, graph -> [meta, module, graph] }
+            .combine(ch_algorithms_offline_gt)
+            .map { meta, module, graph, algorithm ->
+                [meta + [id: meta.id + ".offline_gt", drug_algorithm: algorithm, prioritization_source: "offline_gt"], module, graph, algorithm]
+            }
+            .view { meta, module, graph, algorithm ->
+                "DRUGPRIORITIZATIONOFFLINEGT input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | graph=${graph}"
+            }
+
+        DRUGPRIORITIZATIONOFFLINEGT(
+            ch_drug_prioritization_offline_gt_input,
+            params.includeIndirectDrugs,
+            params.result_size
+        )
+
+        if(run_netmedpy_precompute){
+            ch_drug_prioritization_offline_netmedpy_input = ch_nodes_tsv_not_empty
+                .map { meta, module -> [meta.network_id, meta, module] }
+                .combine(PREPAREDRUGPRIORITIZATIONINPUTS.out.netmedpy_ppi.map { meta, netmedpy_ppi -> [meta.network_id, netmedpy_ppi] }, by: 0)
+                .combine(PREPAREDRUGPRIORITIZATIONINPUTS.out.netmedpy_drug_targets.map { meta, netmedpy_drug_targets -> [meta.network_id, netmedpy_drug_targets] }, by: 0)
+                .combine(PRECOMPUTENETMEDPYDISTANCES.out.netmedpy_distances.map { meta, netmedpy_distances -> [meta.network_id, netmedpy_distances] }, by: 0)
+                .combine(PREPAREDRUGPRIORITIZATIONINPUTS.out.drug_background.map { meta, drug_background -> [meta.network_id, drug_background] }, by: 0)
+                .map { network_id, meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background ->
+                    [meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background]
+                }
+                .combine(ch_algorithms_offline_netmedpy)
+                .map { meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm ->
+                    [meta + [id: meta.id + ".offline_netmedpy", drug_algorithm: algorithm, prioritization_source: "offline_netmedpy"], module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm]
+                }
+                .view { meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm ->
+                    "DRUGPRIORITIZATIONOFFLINENETMEDPY input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | ppi=${netmedpy_ppi} | drug_targets=${netmedpy_drug_targets} | distances=${netmedpy_distances} | drug_background=${drug_background}"
+                }
+
+            DRUGPRIORITIZATIONOFFLINENETMEDPY(
+                ch_drug_prioritization_offline_netmedpy_input,
+                params.result_size
+            )
+        }
 
         if(!params.skip_visualization){
 
