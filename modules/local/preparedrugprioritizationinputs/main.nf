@@ -1,6 +1,7 @@
 process PREPAREDRUGPRIORITIZATIONINPUTS {
     tag "$meta.id"
     label 'process_single'
+    container 'ghcr.io/greenarchitect1/modulediscovery_python_dependencies:main'
 
     input:
         tuple val(meta), path(ppi_gt)

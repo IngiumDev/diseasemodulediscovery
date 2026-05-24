@@ -1,6 +1,7 @@
 process DRUGPRIORITIZATIONOFFLINEGT {
     tag "$meta.id.$algorithm"
     label 'process_single'
+    container 'ghcr.io/greenarchitect1/modulediscovery_python_dependencies:main'
 
     input:
         tuple val(meta), path(module), path(drug_prioritization_graph), val(algorithm)
