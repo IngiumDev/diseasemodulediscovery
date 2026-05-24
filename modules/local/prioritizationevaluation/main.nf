@@ -42,8 +42,7 @@ process PRIORITIZATIONEVALUATION {
              pattern: "*.prioritization_evaluation.tsv"
 
   input:
-    tuple val(meta), val(algorithm), path(prediction_file), path(true_drugs)
-    path  drug_csv
+    tuple val(meta), val(algorithm), path(prediction_file), path(true_drugs), path(drug_background)
 
   output:
     tuple val(meta), val(algorithm), path("${meta.id}.prioritization_evaluation.tsv"), emit: prioritization_evaluation
@@ -51,11 +50,10 @@ process PRIORITIZATIONEVALUATION {
   """
   drug_validation.py \
       --candidate-drugs ${prediction_file} \
-      --drug-list       ${drug_csv} \
+      --drug-list       ${drug_background} \
       --true-drugs      ${true_drugs} \
       --out-dir         . \
       --permutation-count ${params.eval_permutations} \
-      ${params.includeNonApprovedDrugs ? '' : '--only-approved'} \
       --output-file     ${meta.id}.prioritization_evaluation.tsv
   """
 }
@@ -80,7 +78,6 @@ process CREATETRUEDRUGFILE {
     --drug-has-target     ${drug_has_target_csv} \
     --drug-csv            ${drug_csv} \
     --disease-id          ${disease_id} \
-    ${ params.includeNonApprovedDrugs ? '' : '--only-approved' } \
     --output-folder       . \
     --output-file         ${disease_id}.csv
   """

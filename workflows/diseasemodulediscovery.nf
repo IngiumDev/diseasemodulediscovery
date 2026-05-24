@@ -602,6 +602,14 @@ workflow DISEASEMODULEDISCOVERY {
             )
         }
 
+        def ch_offline_rankings_for_eval = Channel.empty()
+        if(selected_drug_algorithms_gt){
+            ch_offline_rankings_for_eval = ch_offline_rankings_for_eval.mix(DRUGPRIORITIZATIONOFFLINEGT.out.drug_rankings)
+        }
+        if(run_netmedpy_precompute){
+            ch_offline_rankings_for_eval = ch_offline_rankings_for_eval.mix(DRUGPRIORITIZATIONOFFLINENETMEDPY.out.drug_rankings)
+        }
+
         if(!params.skip_visualization){
 
             ch_drug_visualization_input = DRUGPREDICTIONS.out.drug_predictions
@@ -683,17 +691,20 @@ workflow DISEASEMODULEDISCOVERY {
                 .map { idx, sid, tf -> tuple(sid, tf) }    // shape: (seedId, file)
 
 
-            def ch_prior_eval_input = DRUGPREDICTIONS.out.drugstone_download
-                .map    { meta, algorithm, prediction_file -> [ meta.seeds_id, [meta, algorithm, prediction_file] ] }
-                .combine( ch_true_drugs_map, by: 0 )
-                .map    { sid, left, true_drug ->
-                            def (meta, algorithm, prediction_file) = left
-                            [ meta, algorithm, prediction_file, true_drug ]
-                        }
+            def ch_prior_eval_input = ch_offline_rankings_for_eval
+                .map { meta, algorithm, prediction_file -> [meta.seeds_id, meta.network_id, meta, algorithm, prediction_file] }
+                .combine(ch_true_drugs_map, by: 0)
+                .map { seeds_id, network_id, meta, algorithm, prediction_file, true_drug -> [network_id, meta, algorithm, prediction_file, true_drug] }
+                .combine(PREPAREDRUGPRIORITIZATIONINPUTS.out.drug_background.map { meta, drug_background -> [meta.network_id, drug_background] }, by: 0)
+                .map { network_id, meta, algorithm, prediction_file, true_drug, drug_background ->
+                    [meta, algorithm, prediction_file, true_drug, drug_background]
+                }
+                .view { meta, algorithm, prediction_file, true_drug, drug_background ->
+                    "PRIORITIZATIONEVALUATION input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | seeds_id=${meta.seeds_id} | algorithm=${algorithm} | drug_algorithm=${meta.drug_algorithm} | prioritization_source=${meta.prioritization_source} | ranking=${prediction_file} | true_drugs=${true_drug} | drug_background=${drug_background}"
+                }
 
             PRIORITIZATIONEVALUATION(
-                ch_prior_eval_input,                     
-                drug_ch            
+                ch_prior_eval_input
             )
             ch_multiqc_files = ch_multiqc_files.mix(
                         PRIORITIZATIONEVALUATION.out.prioritization_evaluation
