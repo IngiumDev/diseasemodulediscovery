@@ -540,25 +540,29 @@ workflow DISEASEMODULEDISCOVERY {
         ch_algorithms_offline_gt = Channel.fromList(selected_drug_algorithms_gt)
         ch_algorithms_offline_netmedpy = Channel.fromList(selected_drug_algorithms_netmedpy)
 
-        ch_drugstone_input = ch_nodes_tsv_not_empty
-            .branch {meta, module ->
-                fail: meta.nodes > params.drugstone_max_nodes
-                pass: true
-            }
-
-        ch_drugstone_input = ch_drugstone_input.pass
-            .combine(ch_algorithms_drugstone)
-            .map { meta, module, algorithm ->
-                [meta + [id: meta.id + "." + algorithm, drug_algorithm: algorithm], module, algorithm]
-            }
-            .multiMap { meta, module, algorithm ->
-                module: [meta, module]
-                algorithm: algorithm
-            }
         includeIndirectDrugs = Channel.value(params.includeIndirectDrugs).map{it ? 1 : 0}
         includeNonApprovedDrugs = Channel.value(params.includeNonApprovedDrugs).map{it ? 1 : 0}
-        DRUGPREDICTIONS(ch_drugstone_input.module, id_space, ch_drugstone_input.algorithm, includeIndirectDrugs, includeNonApprovedDrugs, params.result_size)
-        ch_versions = ch_versions.mix(DRUGPREDICTIONS.out.versions)
+
+        if(params.run_drugstone_api_predictions){
+            ch_drugstone_input = ch_nodes_tsv_not_empty
+                .branch {meta, module ->
+                    fail: meta.nodes > params.drugstone_max_nodes
+                    pass: true
+                }
+
+            ch_drugstone_input = ch_drugstone_input.pass
+                .combine(ch_algorithms_drugstone)
+                .map { meta, module, algorithm ->
+                    [meta + [id: meta.id + "." + algorithm, drug_algorithm: algorithm], module, algorithm]
+                }
+                .multiMap { meta, module, algorithm ->
+                    module: [meta, module]
+                    algorithm: algorithm
+                }
+
+            DRUGPREDICTIONS(ch_drugstone_input.module, id_space, ch_drugstone_input.algorithm, includeIndirectDrugs, includeNonApprovedDrugs, params.result_size)
+            ch_versions = ch_versions.mix(DRUGPREDICTIONS.out.versions)
+        }
 
         ch_drug_prioritization_offline_gt_input = ch_nodes_tsv_not_empty
             .map { meta, module -> [meta.network_id, meta, module] }
@@ -603,16 +607,19 @@ workflow DISEASEMODULEDISCOVERY {
         }
 
         def ch_offline_rankings_for_eval = Channel.empty()
+        def ch_offline_drug_predictions_for_visualization = Channel.empty()
         if(selected_drug_algorithms_gt){
             ch_offline_rankings_for_eval = ch_offline_rankings_for_eval.mix(DRUGPRIORITIZATIONOFFLINEGT.out.drug_rankings)
+            ch_offline_drug_predictions_for_visualization = ch_offline_drug_predictions_for_visualization.mix(DRUGPRIORITIZATIONOFFLINEGT.out.drug_predictions)
         }
         if(run_netmedpy_precompute){
             ch_offline_rankings_for_eval = ch_offline_rankings_for_eval.mix(DRUGPRIORITIZATIONOFFLINENETMEDPY.out.drug_rankings)
+            ch_offline_drug_predictions_for_visualization = ch_offline_drug_predictions_for_visualization.mix(DRUGPRIORITIZATIONOFFLINENETMEDPY.out.drug_predictions)
         }
 
         if(!params.skip_visualization){
 
-            ch_drug_visualization_input = DRUGPREDICTIONS.out.drug_predictions
+            ch_drug_visualization_input = ch_offline_drug_predictions_for_visualization
                 .map{ meta, algorithm, drug_predictions -> [meta, drug_predictions] }
                 .filter{ meta, drug_predictions -> meta.nodes <= params.visualization_max_nodes }       // Filter out modules with too many nodes
                 .map{ meta, drug_predictions -> [meta.module_id, meta, drug_predictions] }              // Format for combining with modules

@@ -271,6 +271,11 @@
                     "description": "Flag for skipping drug predictions",
                     "fa_icon": "fas fa-forward"
                 },
+                "run_drugstone_api_predictions": {
+                    "type": "boolean",
+                    "description": "Run online Drugst.One API drug predictions in addition to offline prioritization.",
+                    "fa_icon": "fas fa-cloud"
+                },
                 "includeIndirectDrugs": {
                     "type": "boolean",
                     "description": "Drugst.One parameter for including indirect drugs.",

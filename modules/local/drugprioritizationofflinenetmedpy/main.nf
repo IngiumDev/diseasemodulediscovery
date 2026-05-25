@@ -9,6 +9,7 @@ process DRUGPRIORITIZATIONOFFLINENETMEDPY {
 
     output:
         tuple val(meta), val(algorithm), path("${meta.id}.${algorithm}.csv"), emit: drug_rankings
+        tuple val(meta), val(algorithm), path("${meta.id}.${algorithm}.drug_predictions.tsv"), emit: drug_predictions
 
     when:
         task.ext.when == null || task.ext.when
@@ -23,6 +24,8 @@ process DRUGPRIORITIZATIONOFFLINENETMEDPY {
         --module "${module}" \
         --algorithm "${algorithm}" \
         --prefix "${meta.id}" \
+        --ranking-output "${meta.id}.${algorithm}.csv" \
+        --drug-predictions-output "${meta.id}.${algorithm}.drug_predictions.tsv" \
         --result-size "${result_size}" \
         --n-processors $task.cpus \
         -l DEBUG
