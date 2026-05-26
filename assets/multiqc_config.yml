@@ -317,14 +317,34 @@ custom_data:
         title: "Empirical p-value (no ranks)"
         description: "Empirical p-value without considering rank information"
         format: "{:.4f}"
+      empirical_AUPR_p_value:
+        title: "Empirical AUPR p-value"
+        description: "Empirical p-value calculated from the AUPR random-ranking distribution"
+        format: "{:.4f}"
+      empirical_AUC_p_value:
+        title: "Empirical AUC p-value"
+        description: "Empirical p-value calculated from the AUC random-ranking distribution"
+        format: "{:.4f}"
       observed_DCG:
         title: "Observed DCG"
         description: "Observed discounted cumulative gain"
+        format: "{:.4f}"
+      observed_NDCG:
+        title: "Observed NDCG"
+        description: "Observed normalized discounted cumulative gain"
         format: "{:.4f}"
       observed_overlap:
         title: "Observed overlap"
         description: "Observed overlap count"
         format: "{:.0f}"
+      observed_AUPR:
+        title: "Observed AUPR"
+        description: "Observed area under the precision-recall curve"
+        format: "{:.4f}"
+      observed_AUC:
+        title: "Observed AUC"
+        description: "Observed area under the ROC curve"
+        format: "{:.4f}"
       dcg_exceed_count:
         title: "DCG exceed count"
         description: "Number of times the permutation DCG exceeded the observed value"
@@ -333,11 +353,39 @@ custom_data:
         title: "Overlap exceed count"
         description: "Number of times the permutation overlap exceeded the observed value"
         format: "{:.0f}"
+      aupr_exceed_count:
+        title: "AUPR exceed count"
+        description: "Number of times the permutation AUPR exceeded the observed value"
+        format: "{:.0f}"
+      auc_exceed_count:
+        title: "AUC exceed count"
+        description: "Number of times the permutation AUC exceeded the observed value"
+        format: "{:.0f}"
       candidate_count:
         title: "Candidate drug count"
         description: "Number of candidate drugs considered in the evaluation"
+        format: "{:.0f}"
+      candidates_absent_from_background_count:
+        title: "Candidates absent from background"
+        description: "Number of candidate drugs absent from the validation background"
         format: "{:.0f}"
       percent_true_drugs_found:
         title: "Percent true drugs found"
         description: "Percentage of true drugs found in the candidate set"
         format: "{:.2f}"
+      true_drugs_original_count:
+        title: "Original true drug count"
+        description: "Number of true drugs before filtering to the validation background"
+        format: "{:.0f}"
+      true_drugs_removed_count:
+        title: "Removed true drug count"
+        description: "Number of true drugs removed because they were absent from the validation background"
+        format: "{:.0f}"
+      true_drugs_left_count:
+        title: "Retained true drug count"
+        description: "Number of true drugs retained after filtering to the validation background"
+        format: "{:.0f}"
+      true_drugs_file:
+        title: "True drugs file"
+        description: "Input true-drug file used for validation"
+        format: "{}"
