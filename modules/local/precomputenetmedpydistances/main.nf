@@ -1,7 +1,7 @@
 process PRECOMPUTENETMEDPYDISTANCES {
     tag "$meta.id"
     label 'process_medium'
-    container 'ghcr.io/greenarchitect1/modulediscovery_python_dependencies:main'
+    container 'ghcr.io/ingiumdev/modulediscovery_python_dependencies:main'
 
     input:
         tuple val(meta), path(netmedpy_ppi)

@@ -35,7 +35,7 @@ process PRIORITIZATIONEVALUATION {
 
   tag "$meta.id"
   label 'process_single'
-  container 'ghcr.io/greenarchitect1/modulediscovery_python_dependencies:main'
+  container 'ghcr.io/ingiumdev/modulediscovery_python_dependencies:main'
 
   publishDir "${params.outdir}/prioritizationevaluation",
              mode: 'copy',
