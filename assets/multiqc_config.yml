@@ -317,14 +317,6 @@ custom_data:
         title: "Empirical p-value (no ranks)"
         description: "Empirical p-value without considering rank information"
         format: "{:.4f}"
-      empirical_AUPR_p_value:
-        title: "Empirical AUPR p-value"
-        description: "Empirical p-value calculated from the AUPR random-ranking distribution"
-        format: "{:.4f}"
-      empirical_AUC_p_value:
-        title: "Empirical AUC p-value"
-        description: "Empirical p-value calculated from the AUC random-ranking distribution"
-        format: "{:.4f}"
       observed_DCG:
         title: "Observed DCG"
         description: "Observed discounted cumulative gain"
@@ -337,9 +329,13 @@ custom_data:
         title: "Observed overlap"
         description: "Observed overlap count"
         format: "{:.0f}"
+      observed_average_precision:
+        title: "Observed average precision"
+        description: "Observed sklearn average precision score"
+        format: "{:.4f}"
       observed_AUPR:
         title: "Observed AUPR"
-        description: "Observed area under the precision-recall curve"
+        description: "Observed trapezoidal area under the precision-recall curve"
         format: "{:.4f}"
       observed_AUC:
         title: "Observed AUC"
@@ -352,14 +348,6 @@ custom_data:
       overlap_exceed_count:
         title: "Overlap exceed count"
         description: "Number of times the permutation overlap exceeded the observed value"
-        format: "{:.0f}"
-      aupr_exceed_count:
-        title: "AUPR exceed count"
-        description: "Number of times the permutation AUPR exceeded the observed value"
-        format: "{:.0f}"
-      auc_exceed_count:
-        title: "AUC exceed count"
-        description: "Number of times the permutation AUC exceeded the observed value"
         format: "{:.0f}"
       candidate_count:
         title: "Candidate drug count"
