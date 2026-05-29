@@ -506,10 +506,10 @@ workflow DISEASEMODULEDISCOVERY {
     */
 
     if(!params.skip_drug_predictions){
-        def valid_algorithms = ['trustrank', 'closeness', 'degree', 'network_proximity', 'network_separation'] // is there not a better place to define this?
+        def valid_algorithms = ['trustrank', 'harmonic_centrality', 'degree', 'network_proximity', 'network_separation'] // is there not a better place to define this?
         def selected_drug_algorithms = params.drugstone_algorithms.split(',').collect { it.trim() }
         def selected_drug_algorithms_gt = selected_drug_algorithms.findAll { algorithm ->
-            algorithm == 'trustrank' || algorithm == 'closeness' || algorithm == 'degree'
+            algorithm == 'trustrank' || algorithm == 'harmonic_centrality' || algorithm == 'degree'
         }
         def selected_drug_algorithms_netmedpy = selected_drug_algorithms.findAll { algorithm ->
             algorithm == 'network_proximity' || algorithm == 'network_separation'
@@ -531,6 +531,9 @@ workflow DISEASEMODULEDISCOVERY {
         }
 
         selected_drug_algorithms.each { algorithm ->
+            if (algorithm == 'closeness') {
+                log.warn "The 'closeness' drug prioritization algorithm is no longer supported. Use 'harmonic_centrality' instead."
+            }
             if (!valid_algorithms.contains(algorithm)) {
                 throw new IllegalArgumentException("Invalid algorithm: $algorithm. Must be one of: ${valid_algorithms.join(', ')}")
             }
