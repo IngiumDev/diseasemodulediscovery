@@ -20,6 +20,7 @@ from drug_prioritization_common import (
     DRUGSTONE_RESULT_COLUMNS,
     load_module_node_ids,
     normalize_scores,
+    write_drug_predictions,
     write_results,
 )
 
@@ -76,7 +77,23 @@ def parse_args():
         "--prefix",
         required=True,
         type=str,
-        help="Output prefix. The ranking file is written as '<prefix>.<algorithm>.csv'.",
+        help=(
+            "Output prefix. If --ranking-output is omitted, the default ranking file is "
+            "written as '<prefix>.<algorithm>.csv'."
+        ),
+    )
+    parser.add_argument(
+        "--ranking-output",
+        type=Path,
+        help="Output CSV path. Defaults to '<prefix>.<algorithm>.csv'.",
+    )
+    parser.add_argument(
+        "--drug-predictions-output",
+        type=Path,
+        help=(
+            "Output drug predictions TSV path. Defaults to "
+            "'<prefix>.<algorithm>.drug_predictions.tsv'."
+        ),
     )
     parser.add_argument(
         "--drug-background",
@@ -276,7 +293,10 @@ def main(args) -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
-    output_path = Path(f"{args.prefix}.{args.algorithm}.csv")
+    ranking_output_path = args.ranking_output or Path(f"{args.prefix}.{args.algorithm}.csv")
+    drug_predictions_output_path = args.drug_predictions_output or Path(
+        f"{args.prefix}.{args.algorithm}.drug_predictions.tsv"
+    )
 
     network = load_ppi_network(args.ppi)
     drug_targets = load_drug_targets(args.drug_targets)
@@ -308,7 +328,12 @@ def main(args) -> None:
         drug_metadata=drug_metadata,
         result_size=args.result_size,
     )
-    write_results(result_df, output_path)
+    write_results(result_df, ranking_output_path)
+    write_drug_predictions(
+        module_path=args.module,
+        ranking_df=result_df,
+        output_path=drug_predictions_output_path,
+    )
 
 
 if __name__ == "__main__":

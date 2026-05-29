@@ -18,6 +18,7 @@ from drug_prioritization_common import (
     DRUGSTONE_RESULT_COLUMNS,
     load_module_node_ids,
     normalize_scores,
+    write_drug_predictions,
     write_results,
 )
 
@@ -25,13 +26,12 @@ logger = logging.getLogger(__name__)
 
 PRIORITIZATION_ALGORITHMS = (
     "trustrank",
-    "closeness",
+    "harmonic_centrality",
     "degree",
 )
 BIOLOGICAL_NODE_TYPE = "protein/gene"
 DRUG_NODE_TYPE = "drug"
 PDI_EDGE_TYPE = "protein-drug"
-LARGE_DISTANCE = 1e12
 
 
 def parse_args():
@@ -74,14 +74,22 @@ def parse_args():
         required=True,
         type=str,
         help=(
-            "Output prefix. If --output is omitted, the default ranking file is "
+            "Output prefix. If --ranking-output is omitted, the default ranking file is "
             "written as '<prefix>.<algorithm>.csv'."
         ),
     )
     parser.add_argument(
-        "-o",
-        "--output",
-        help="Optional explicit output CSV path.",
+        "--ranking-output",
+        type=Path,
+        help="Output CSV path. Defaults to '<prefix>.<algorithm>.csv'.",
+    )
+    parser.add_argument(
+        "--drug-predictions-output",
+        type=Path,
+        help=(
+            "Output drug predictions TSV path. Defaults to "
+            "'<prefix>.<algorithm>.drug_predictions.tsv'."
+        ),
     )
     parser.add_argument(
         "--includeIndirectDrugs",
@@ -194,23 +202,6 @@ def filter_direct_drugs(
     return sorted(direct_drug_vertices)
 
 
-def get_direct_drug_vertices(
-    graph: gt.Graph,
-    module_vertex_indices: list[int],
-) -> set[int]:
-    """Return drugs directly connected to at least one module protein/gene."""
-    direct_drug_vertices: set[int] = set()
-    for module_vertex_index in module_vertex_indices:
-        module_vertex = graph.vertex(module_vertex_index)
-        for edge in module_vertex.all_edges():
-            if str(graph.ep["type"][edge]).strip() != PDI_EDGE_TYPE:
-                continue
-            source = int(edge.source())
-            target = int(edge.target())
-            direct_drug_vertices.add(target if source == module_vertex_index else source)
-    return direct_drug_vertices
-
-
 def get_candidate_drug_vertices(graph: gt.Graph) -> list[int]:
     """Return all drug vertices in the prepared working graph."""
     drug_vertices = [
@@ -262,31 +253,40 @@ def run_degree(
     return scored_drugs
 
 
-def run_closeness(
+def run_harmonic_centrality(
     graph: gt.Graph,
     module_vertex_indices: list[int],
     drug_vertex_indices: list[int],
-    zero_score_drug_vertices: set[int] | None = None,
 ) -> list[tuple[int, float]]:
-    """Score drugs by their average shortest-path proximity to module nodes."""
-    zero_score_drug_vertices = zero_score_drug_vertices or set()
-    distance_sum = np.zeros(graph.num_vertices(), dtype=float)
+    """Score drugs by seed-normalized harmonic centrality to module nodes."""
+    candidate_drug_vertices = [graph.vertex(vertex_index) for vertex_index in drug_vertex_indices]
+    harmonic_scores = np.zeros(len(drug_vertex_indices), dtype=float)
+    max_reachable_distance = graph.num_vertices() - 1
 
-    for module_vertex_index in module_vertex_indices:
-        distances = np.asarray(
-            gt.shortest_distance(graph, source=graph.vertex(module_vertex_index)).get_array(),
+    # Iterate over each seed and add its reciprocal distance contribution.
+    for seed_vertex_index in module_vertex_indices:
+        drug_distances = np.asarray(
+            gt.shortest_distance(
+                graph,
+                source=graph.vertex(seed_vertex_index),
+                target=candidate_drug_vertices,
+            ),
             dtype=float,
         )
-        distances[np.isinf(distances)] = LARGE_DISTANCE
-        distance_sum += distances + 1.0
-
-    scores = len(module_vertex_indices) / distance_sum
-    return [
-        (
-            vertex_index,
-            0.0 if vertex_index in zero_score_drug_vertices else float(scores[vertex_index]),
+        # In an unweighted graph, reachable paths have length <= N - 1.
+        # graph-tool reports unreachable targets as a larger sentinel value.
+        reachable = (
+            np.isfinite(drug_distances)
+            & (drug_distances > 0)
+            & (drug_distances <= max_reachable_distance)
         )
-        for vertex_index in drug_vertex_indices
+        harmonic_scores[reachable] += 1.0 / drug_distances[reachable]
+
+    harmonic_scores /= len(module_vertex_indices)
+
+    return [
+        (drug_vertex_index, float(score))
+        for drug_vertex_index, score in zip(drug_vertex_indices, harmonic_scores)
     ]
 
 
@@ -314,6 +314,8 @@ def get_drug_label(graph: gt.Graph, drug_vertex_index: int) -> str:
 
 def get_drug_status(graph: gt.Graph, drug_vertex_index: int) -> str:
     """Return the drug status string stored on the prepared merged graph."""
+    if "status" not in graph.vp:
+        return ""
     return str(graph.vp["status"][graph.vertex(drug_vertex_index)]).strip()
 
 
@@ -371,7 +373,10 @@ def main(args) -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
-    output_path = args.output if args.output else f"{args.prefix}.{args.algorithm}.csv"
+    ranking_output_path = args.ranking_output or Path(f"{args.prefix}.{args.algorithm}.csv")
+    drug_predictions_output_path = args.drug_predictions_output or Path(
+        f"{args.prefix}.{args.algorithm}.drug_predictions.tsv"
+    )
 
     module_node_ids = load_module_node_ids(args.module)
     graph = load_prioritization_graph(args.drug_prioritization_graph)
@@ -399,20 +404,11 @@ def main(args) -> None:
             drug_vertex_indices=drug_vertex_indices,
             damping_factor=args.damping_factor,
         )
-    elif args.algorithm == "closeness":
-        zero_score_drug_vertices = set()
-        if args.includeIndirectDrugs:
-            direct_drug_vertices = get_direct_drug_vertices(graph, module_vertex_indices)
-            zero_score_drug_vertices = set(drug_vertex_indices) - direct_drug_vertices
-            logger.info(
-                "Closeness will keep %d indirect candidate drugs with score 0",
-                len(zero_score_drug_vertices),
-            )
-        scored_drugs = run_closeness(
+    elif args.algorithm == "harmonic_centrality":
+        scored_drugs = run_harmonic_centrality(
             graph=graph,
             module_vertex_indices=module_vertex_indices,
             drug_vertex_indices=drug_vertex_indices,
-            zero_score_drug_vertices=zero_score_drug_vertices,
         )
     elif args.algorithm == "degree":
         scored_drugs = run_degree(
@@ -429,7 +425,12 @@ def main(args) -> None:
         module_vertex_indices=module_vertex_indices,
         result_size=args.result_size,
     )
-    write_results(result_df, output_path)
+    write_results(result_df, ranking_output_path)
+    write_drug_predictions(
+        module_path=args.module,
+        ranking_df=result_df,
+        output_path=drug_predictions_output_path,
+    )
 
 if __name__ == "__main__":
     # Sample argv for local debugging in the script directory:
@@ -440,10 +441,10 @@ if __name__ == "__main__":
     #     "--module",
     #     "../../data/modules/ensembl/seeds_ensembl.string.human_links_v12_0_min700.Ensembl.diamond.nodes.tsv",
     #     "--algorithm",
-    #     "trustrank",
+    #     "harmonic_centrality",
     #     "--prefix",
     #     "seeds_ensembl.string.human_links_v12_0_min700.Ensembl.diamond",
-    #     # "--includeIndirectDrugs",
+    #      "--includeIndirectDrugs",
     #     "-l",
     #     "DEBUG",
     # ]
