@@ -294,7 +294,7 @@
                 },
                 "drugstone_algorithms": {
                     "type": "string",
-                    "description": "Drugst.One parameter for algorithms to be used. Comma separated list. Options: 'trustrank', 'degree' and 'closeness'.",
+                    "description": "Drugst.One parameter for algorithms to be used. Comma separated list. Options: 'trustrank', 'degree' and 'harmonic_centrality'. 'closeness' is no longer supported.",
                     "default": "trustrank",
                     "fa_icon": "fas fa-list-ol"
                 },
