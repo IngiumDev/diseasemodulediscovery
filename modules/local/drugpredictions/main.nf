@@ -20,7 +20,7 @@ process DRUGPREDICTIONS {
 
     script:
     def drugstone_id_space = "${idspace}" == "ensembl" ? "ensg" : "${idspace}"
-    def result_size_arg = result_size != null ? "--result_size \"${result_size}\"" : ""
+    def result_size_arg = result_size != '' ? "--result_size \"${result_size}\"" : ""
     """
     drug_predictions.py --idspace "${drugstone_id_space}" -p "${meta.id}" -a "${algorithm}" --includeIndirectDrugs ${includeIndirectDrugs} --includeNonApprovedDrugs ${includeNonApprovedDrugs} ${result_size_arg} "${module}" -l DEBUG ${ params.accept_license ? '--accept_license' : '' }
 

@@ -16,7 +16,7 @@ process DRUGPRIORITIZATIONOFFLINEGT {
         task.ext.when == null || task.ext.when
 
     script:
-    def result_size_arg = result_size != null ? "--result-size \"${result_size}\"" : ""
+    def result_size_arg = result_size != '' ? "--result-size \"${result_size}\"" : ""
     """
     drug_prioritization_graphtool.py \
         --drug-prioritization-graph "${drug_prioritization_graph}" \

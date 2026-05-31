@@ -15,7 +15,7 @@ process DRUGPRIORITIZATIONOFFLINENETMEDPY {
         task.ext.when == null || task.ext.when
 
     script:
-    def result_size_arg = result_size != null ? "--result-size \"${result_size}\"" : ""
+    def result_size_arg = result_size != '' ? "--result-size \"${result_size}\"" : ""
     """
     drug_prioritization_netmedpy.py \
         --ppi "${netmedpy_ppi}" \

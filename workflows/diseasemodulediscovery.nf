@@ -563,7 +563,7 @@ workflow DISEASEMODULEDISCOVERY {
                     algorithm: algorithm
                 }
 
-            DRUGPREDICTIONS(ch_drugstone_input.module, id_space, ch_drugstone_input.algorithm, includeIndirectDrugs, includeNonApprovedDrugs, params.result_size)
+            DRUGPREDICTIONS(ch_drugstone_input.module, id_space, ch_drugstone_input.algorithm, includeIndirectDrugs, includeNonApprovedDrugs, params.result_size == null ? '' : params.result_size)
             ch_versions = ch_versions.mix(DRUGPREDICTIONS.out.versions)
         }
 
@@ -582,7 +582,7 @@ workflow DISEASEMODULEDISCOVERY {
         DRUGPRIORITIZATIONOFFLINEGT(
             ch_drug_prioritization_offline_gt_input,
             params.includeIndirectDrugs,
-            params.result_size
+            params.result_size == null ? '' : params.result_size
         )
 
         if(run_netmedpy_precompute){
@@ -605,7 +605,7 @@ workflow DISEASEMODULEDISCOVERY {
 
             DRUGPRIORITIZATIONOFFLINENETMEDPY(
                 ch_drug_prioritization_offline_netmedpy_input,
-                params.result_size
+                params.result_size == null ? '' : params.result_size
             )
         }
 
