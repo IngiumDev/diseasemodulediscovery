@@ -709,9 +709,9 @@ workflow DISEASEMODULEDISCOVERY {
                 .map { network_id, meta, algorithm, prediction_file, true_drug, drug_background ->
                     [meta, algorithm, prediction_file, true_drug, drug_background]
                 }
-                .view { meta, algorithm, prediction_file, true_drug, drug_background ->
-                    "PRIORITIZATIONEVALUATION input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | seeds_id=${meta.seeds_id} | algorithm=${algorithm} | drug_algorithm=${meta.drug_algorithm} | prioritization_source=${meta.prioritization_source} | ranking=${prediction_file} | true_drugs=${true_drug} | drug_background=${drug_background}"
-                }
+//                 .view { meta, algorithm, prediction_file, true_drug, drug_background ->
+//                     "PRIORITIZATIONEVALUATION input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | seeds_id=${meta.seeds_id} | algorithm=${algorithm} | drug_algorithm=${meta.drug_algorithm} | prioritization_source=${meta.prioritization_source} | ranking=${prediction_file} | true_drugs=${true_drug} | drug_background=${drug_background}"
+//                 }
 
             PRIORITIZATIONEVALUATION(
                 ch_prior_eval_input
