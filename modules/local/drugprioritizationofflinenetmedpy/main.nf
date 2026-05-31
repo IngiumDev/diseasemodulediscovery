@@ -15,6 +15,7 @@ process DRUGPRIORITIZATIONOFFLINENETMEDPY {
         task.ext.when == null || task.ext.when
 
     script:
+    def result_size_arg = result_size != null ? "--result-size \"${result_size}\"" : ""
     """
     drug_prioritization_netmedpy.py \
         --ppi "${netmedpy_ppi}" \
@@ -26,7 +27,7 @@ process DRUGPRIORITIZATIONOFFLINENETMEDPY {
         --prefix "${meta.id}" \
         --ranking-output "${meta.id}.${algorithm}.csv" \
         --drug-predictions-output "${meta.id}.${algorithm}.drug_predictions.tsv" \
-        --result-size "${result_size}" \
+        ${result_size_arg} \
         --n-processors $task.cpus \
         -l DEBUG
     """

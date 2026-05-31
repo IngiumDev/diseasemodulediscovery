@@ -16,6 +16,7 @@ process DRUGPRIORITIZATIONOFFLINEGT {
         task.ext.when == null || task.ext.when
 
     script:
+    def result_size_arg = result_size != null ? "--result-size \"${result_size}\"" : ""
     """
     drug_prioritization_graphtool.py \
         --drug-prioritization-graph "${drug_prioritization_graph}" \
@@ -24,7 +25,7 @@ process DRUGPRIORITIZATIONOFFLINEGT {
         --prefix "${meta.id}" \
         --ranking-output "${meta.id}.${algorithm}.csv" \
         --drug-predictions-output "${meta.id}.${algorithm}.drug_predictions.tsv" \
-        --result-size "${result_size}" \
+        ${result_size_arg} \
         ${includeIndirectDrugs ? '--includeIndirectDrugs' : ''} \
         -l DEBUG
     """

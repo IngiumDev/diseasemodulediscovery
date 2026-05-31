@@ -390,6 +390,22 @@ def main(args) -> None:
         logger.info("Keeping indirect drugs in the merged graph")
         drug_vertex_indices = get_candidate_drug_vertices(graph)
 
+    if not drug_vertex_indices:
+        logger.warning("No candidate drugs remain after filtering; writing empty outputs")
+        result_df = build_result_table(
+            graph=graph,
+            scored_drugs=[],
+            module_vertex_indices=module_vertex_indices,
+            result_size=args.result_size,
+        )
+        write_results(result_df, ranking_output_path)
+        write_drug_predictions(
+            module_path=args.module,
+            ranking_df=result_df,
+            output_path=drug_predictions_output_path,
+        )
+        return
+
     logger.info(
         "Working graph contains %d vertices and %d edges",
         graph.num_vertices(),

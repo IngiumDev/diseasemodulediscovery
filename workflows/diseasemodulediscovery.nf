@@ -575,9 +575,9 @@ workflow DISEASEMODULEDISCOVERY {
             .map { meta, module, graph, algorithm ->
                 [meta + [id: meta.id + ".offline_gt", drug_algorithm: algorithm, prioritization_source: "offline_gt"], module, graph, algorithm]
             }
-            .view { meta, module, graph, algorithm ->
-                "DRUGPRIORITIZATIONOFFLINEGT input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | graph=${graph}"
-            }
+//             .view { meta, module, graph, algorithm ->
+//                 "DRUGPRIORITIZATIONOFFLINEGT input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | graph=${graph}"
+//             }
 
         DRUGPRIORITIZATIONOFFLINEGT(
             ch_drug_prioritization_offline_gt_input,
@@ -599,9 +599,9 @@ workflow DISEASEMODULEDISCOVERY {
                 .map { meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm ->
                     [meta + [id: meta.id + ".offline_netmedpy", drug_algorithm: algorithm, prioritization_source: "offline_netmedpy"], module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm]
                 }
-                .view { meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm ->
-                    "DRUGPRIORITIZATIONOFFLINENETMEDPY input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | ppi=${netmedpy_ppi} | drug_targets=${netmedpy_drug_targets} | distances=${netmedpy_distances} | drug_background=${drug_background}"
-                }
+//                 .view { meta, module, netmedpy_ppi, netmedpy_drug_targets, netmedpy_distances, drug_background, algorithm ->
+//                     "DRUGPRIORITIZATIONOFFLINENETMEDPY input | id=${meta.id} | module_id=${meta.module_id} | network_id=${meta.network_id} | algorithm=${algorithm} | module=${module} | ppi=${netmedpy_ppi} | drug_targets=${netmedpy_drug_targets} | distances=${netmedpy_distances} | drug_background=${drug_background}"
+//                 }
 
             DRUGPRIORITIZATIONOFFLINENETMEDPY(
                 ch_drug_prioritization_offline_netmedpy_input,

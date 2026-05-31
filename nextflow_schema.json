@@ -288,8 +288,7 @@
                 },
                 "result_size": {
                     "type": "integer",
-                    "default": 50,
-                    "description": "Drugst.One parameter for defining  the maximum number of returned drugs.",
+                    "description": "Optional maximum number of returned drugs. If omitted, offline prioritization returns all ranked drugs and online Drugst.One API predictions use the API wrapper default.",
                     "fa_icon": "fas fa-expand-arrows-alt"
                 },
                 "drugstone_algorithms": {
