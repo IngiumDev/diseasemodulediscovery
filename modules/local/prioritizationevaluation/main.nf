@@ -36,6 +36,8 @@ process PRIORITIZATIONEVALUATION {
   tag "$meta.id"
   label 'process_single'
   container 'ghcr.io/ingiumdev/modulediscovery_python_dependencies:main'
+  memory = 3.GB
+  time = 30.min
 
   publishDir "${params.outdir}/prioritizationevaluation",
              mode: 'copy',

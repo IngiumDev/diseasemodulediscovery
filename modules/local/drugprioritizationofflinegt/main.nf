@@ -1,7 +1,9 @@
 process DRUGPRIORITIZATIONOFFLINEGT {
     tag "$meta.id.$algorithm"
     label 'process_single'
-    container 'ghcr.io/greenarchitect1/modulediscovery_python_dependencies:main'
+    container 'ghcr.io/ingiumdev/modulediscovery_python_dependencies:main'
+    memory = 3.GB
+    time = 30.min
 
     input:
         tuple val(meta), path(module), path(drug_prioritization_graph), val(algorithm)
