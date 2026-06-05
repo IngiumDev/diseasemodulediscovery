@@ -357,6 +357,14 @@ custom_data:
         title: "Candidates absent from background"
         description: "Number of candidate drugs absent from the validation background"
         format: "{:.0f}"
+      background_size:
+        title: "Background size"
+        description: "Number of unique drugs in the normalized validation background"
+        format: "{:.0f}"
+      positive_percentage:
+        title: "Positive percentage"
+        description: "Percentage of validation background drugs retained as true drugs"
+        format: "{:.2f}"
       percent_true_drugs_found:
         title: "Percent true drugs found"
         description: "Percentage of true drugs found in the candidate set"

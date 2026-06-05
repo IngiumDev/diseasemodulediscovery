@@ -266,18 +266,22 @@ def calculate_random_ranking_metrics(
 def generate_random_metric_distributions(
         drug_ids: list[str],
         true_drugs: list[str],
-        length: int,
+        score_template: np.ndarray | list[float],
         count: int,
         seed: Optional[int] = None) -> dict[str, list[float] | list[int]]:
     """
-    Generate random metric distributions from sampled drug rankings.
+    Generate random metric distributions from sampled drugs assigned to score slots.
 
-    DCG p-value: Tests whether known drugs occur unusually early in the predicted ranking compared with random rankings from the same drug background.
+    DCG p-value: Tests whether known drugs receive unusually high-ranking score
+    slots compared with random drugs from the same drug background while
+    preserving the observed ranking score structure, including ties.
 
     Args:
         drug_ids: Drug IDs to sample from.
         true_drugs: True drug IDs retained in the validation background.
-        length: Number of drugs to sample per permutation.
+        score_template: Observed candidate scores ordered by evaluation rank.
+            These scores are reused for every random permutation so tied blocks
+            in the observed ranking are preserved in the null model.
         count: Number of permutations.
         seed: Optional NumPy random generator seed.
 
@@ -286,12 +290,13 @@ def generate_random_metric_distributions(
     """
     background_drug_ids = np.asarray(drug_ids)
     true_drug_ids = np.asarray(true_drugs)
+    score_template = np.asarray(score_template, dtype=float)
 
     background_drug_count = len(background_drug_ids)
-    sample_size = min(length, background_drug_count)
+    sample_size = min(len(score_template), background_drug_count)
 
     is_true_drug_by_background_index = np.isin(background_drug_ids, true_drug_ids).astype(int)
-    random_sample_scores = np.arange(sample_size, 0, -1, dtype=float)
+    random_sample_scores = score_template[:sample_size]  # only use as many score slots as the background size
     rng = np.random.default_rng(seed)
 
     dcg_values: list[float] = []
@@ -399,8 +404,9 @@ def main(args: argparse.Namespace) -> None:
             'overlap_exceed_count',
             'candidate_count',
             'candidates_absent_from_background_count',
+            'background_size',
+            'positive_percentage',
             'percent_true_drugs_found',
-            # TODO: Update MultiQC parsing/config to consume these true-drug background filtering columns.
             'true_drugs_original_count',
             'true_drugs_removed_count',
             'true_drugs_left_count',
@@ -422,6 +428,8 @@ def main(args: argparse.Namespace) -> None:
                 str(result['overlap exceed count']),
                 str(result['candidate count']),
                 str(result['candidates absent from background count']),
+                str(result['background size']),
+                str(result['positive percentage']),
                 str(result['percent true drugs found']),
                 str(result['true drugs original count']),
                 str(result['true drugs removed count']),
@@ -461,6 +469,7 @@ def drug_list_validation(
         for drug_id in drugs_df["drug_id"].dropna().astype(str).str.strip()
     ]
     background_drug_ids = sorted(set(background_drug_ids))
+    background_size = len(background_drug_ids)
     background_drugs = set(background_drug_ids)
     candidates = normalize_candidate_ranking(candidates)
     candidate_drugs = set(candidates["drug_id"])
@@ -481,6 +490,11 @@ def drug_list_validation(
     true_drugs = sorted(true_drugs.intersection(background_drugs))
     true_drugs_left_count = len(true_drugs)
     true_drugs_removed_count = true_drugs_original_count - true_drugs_left_count
+    positive_percentage = (
+        true_drugs_left_count / background_size * 100
+        if background_size > 0
+        else 0.0
+    )
     logger.info(
         "Removed %d true drugs absent from the sampling background; %d remain",
         true_drugs_removed_count,
@@ -490,7 +504,8 @@ def drug_list_validation(
     if true_drugs_left_count == 0:
         return return_zero_true_drugs_left(candidates, permutation_count, true_drugs_left_count,
                                            true_drugs_original_count, true_drugs_removed_count,
-                                           candidates_absent_from_background_count)
+                                           candidates_absent_from_background_count, background_size,
+                                           positive_percentage)
 
     observed_relevance = candidates["drug_id"].isin(true_drugs).to_numpy(dtype=float)
     observed_scores = candidates["score"].to_numpy(dtype=float)
@@ -509,7 +524,7 @@ def drug_list_validation(
     random_metrics = generate_random_metric_distributions(
         background_drug_ids,
         true_drugs,
-        length=len(candidates),
+        score_template=candidates["score"],
         count=permutation_count,
     )
     logger.debug(
@@ -544,6 +559,8 @@ def drug_list_validation(
         "overlap exceed count": exceed_overlap,
         "candidate count": len(candidates),
         "candidates absent from background count": candidates_absent_from_background_count,
+        "background size": background_size,
+        "positive percentage": positive_percentage,
         "percent true drugs found": (observed_overlap / len(true_drugs) * 100) if candidates.shape[0] > 0 else 0.0,
         "observed average precision": threshold_metrics["observed average precision"],
         "observed AUPR": threshold_metrics["observed AUPR"],
@@ -556,7 +573,8 @@ def drug_list_validation(
 
 def return_zero_true_drugs_left(candidates: DataFrame, permutation_count: int, true_drugs_left_count: Literal[0],
                                 true_drugs_original_count: int, true_drugs_removed_count: int,
-                                candidates_absent_from_background_count: int) -> dict[
+                                candidates_absent_from_background_count: int, background_size: int,
+                                positive_percentage: float) -> dict[
     str | Any, float | int | Any]:
     logger.warning("No true drugs remain after filtering to the sampling background")
     return {
@@ -569,6 +587,8 @@ def return_zero_true_drugs_left(candidates: DataFrame, permutation_count: int, t
         "overlap exceed count": permutation_count,
         "candidate count": len(candidates),
         "candidates absent from background count": candidates_absent_from_background_count,
+        "background size": background_size,
+        "positive percentage": positive_percentage,
         "percent true drugs found": 0.0,
         "observed average precision": 0.0,
         "observed AUPR": 0.0,
