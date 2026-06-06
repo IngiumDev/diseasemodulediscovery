@@ -329,6 +329,10 @@ custom_data:
         title: "Observed overlap"
         description: "Observed overlap count"
         format: "{:.0f}"
+      observed_average_positive_rank:
+        title: "Average positive rank"
+        description: "Average candidate rank of retained true drugs found in the ranking"
+        format: "{:.2f}"
       observed_average_precision:
         title: "Observed average precision"
         description: "Observed sklearn average precision score"
@@ -384,4 +388,8 @@ custom_data:
       true_drugs_file:
         title: "True drugs file"
         description: "Input true-drug file used for validation"
+        format: "{}"
+      true_drug_ranks_json:
+        title: "True drug ranks"
+        description: "JSON list of retained true drugs and their candidate ranks in true-drug file order"
         format: "{}"

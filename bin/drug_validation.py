@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import json
 import logging
 import os
 import sys
@@ -24,7 +25,7 @@ _handler = logging.StreamHandler()
 _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
 logger.addHandler(_handler)
 
-ValidationResult = dict[str, float | int]
+ValidationResult = dict[str, float | int | str]
 
 
 def normalize_drugbank_id(drug_id: str) -> str:
@@ -397,6 +398,7 @@ def main(args: argparse.Namespace) -> None:
             'observed_DCG',
             'observed_NDCG',
             'observed_overlap',
+            'observed_average_positive_rank',
             'observed_average_precision',
             'observed_AUPR',
             'observed_AUC',
@@ -410,7 +412,8 @@ def main(args: argparse.Namespace) -> None:
             'true_drugs_original_count',
             'true_drugs_removed_count',
             'true_drugs_left_count',
-            'true_drugs_file'
+            'true_drugs_file',
+            'true_drug_ranks_json'
         ]
         with open(output_file, 'w') as f:
             f.write('\t'.join(header) + '\n')
@@ -421,6 +424,7 @@ def main(args: argparse.Namespace) -> None:
                 str(result['observed DCG']),
                 str(result['observed NDCG']),
                 str(result['observed overlap']),
+                str(result['observed average positive rank']),
                 str(result['observed average precision']),
                 str(result['observed AUPR']),
                 str(result['observed AUC']),
@@ -434,7 +438,8 @@ def main(args: argparse.Namespace) -> None:
                 str(result['true drugs original count']),
                 str(result['true drugs removed count']),
                 str(result['true drugs left count']),
-                args.true_drugs
+                args.true_drugs,
+                str(result['true drug ranks json'])
             ]
             f.write('\t'.join(row) + '\n')
         logger.info(f"Results successfully saved to '{output_file}'")
@@ -481,13 +486,16 @@ def drug_list_validation(
             candidates_absent_from_background_count,
         )
 
-    cleaned_true_drugs = set()
+    ordered_true_drugs = []
+    seen_true_drugs = set()
     for drug_id in pd.Series(true_drugs).dropna().astype(str).str.strip():
-        cleaned_true_drugs.add(normalize_drugbank_id(drug_id))
-    true_drugs = cleaned_true_drugs
+        normalized_drug_id = normalize_drugbank_id(drug_id)
+        if normalized_drug_id not in seen_true_drugs:
+            ordered_true_drugs.append(normalized_drug_id)
+            seen_true_drugs.add(normalized_drug_id)
 
-    true_drugs_original_count = len(true_drugs)
-    true_drugs = sorted(true_drugs.intersection(background_drugs))
+    true_drugs_original_count = len(ordered_true_drugs)
+    true_drugs = [drug_id for drug_id in ordered_true_drugs if drug_id in background_drugs]
     true_drugs_left_count = len(true_drugs)
     true_drugs_removed_count = true_drugs_original_count - true_drugs_left_count
     positive_percentage = (
@@ -506,6 +514,25 @@ def drug_list_validation(
                                            true_drugs_original_count, true_drugs_removed_count,
                                            candidates_absent_from_background_count, background_size,
                                            positive_percentage)
+
+    rank_by_drug_id = dict(zip(candidates["drug_id"], candidates["rank"]))
+    true_drug_rank_entries = []
+    found_true_drug_ranks = []
+    for drug_id in true_drugs:
+        rank = rank_by_drug_id.get(drug_id)
+        if rank is not None:
+            rank = int(rank)
+            found_true_drug_ranks.append(rank)
+        true_drug_rank_entries.append({
+            "drug_id": drug_id,
+            "rank": rank,
+        })
+    true_drug_ranks_json = json.dumps(true_drug_rank_entries, separators=(",", ":"))
+    observed_average_positive_rank = (
+        float(np.mean(found_true_drug_ranks))
+        if found_true_drug_ranks
+        else float("nan")
+    )
 
     observed_relevance = candidates["drug_id"].isin(true_drugs).to_numpy(dtype=float)
     observed_scores = candidates["score"].to_numpy(dtype=float)
@@ -555,6 +582,10 @@ def drug_list_validation(
         "observed DCG": dcg_observed,
         "observed NDCG": ndcg_observed,
         "observed overlap": observed_overlap,
+        "observed average positive rank": observed_average_positive_rank,
+        "observed average precision": threshold_metrics["observed average precision"],
+        "observed AUPR": threshold_metrics["observed AUPR"],
+        "observed AUC": threshold_metrics["observed AUC"],
         "dcg exceed count": exceed_dcg,
         "overlap exceed count": exceed_overlap,
         "candidate count": len(candidates),
@@ -562,12 +593,10 @@ def drug_list_validation(
         "background size": background_size,
         "positive percentage": positive_percentage,
         "percent true drugs found": (observed_overlap / len(true_drugs) * 100) if candidates.shape[0] > 0 else 0.0,
-        "observed average precision": threshold_metrics["observed average precision"],
-        "observed AUPR": threshold_metrics["observed AUPR"],
-        "observed AUC": threshold_metrics["observed AUC"],
         "true drugs original count": true_drugs_original_count,
         "true drugs removed count": true_drugs_removed_count,
         "true drugs left count": true_drugs_left_count,
+        "true drug ranks json": true_drug_ranks_json,
     }
 
 
@@ -583,6 +612,10 @@ def return_zero_true_drugs_left(candidates: DataFrame, permutation_count: int, t
         "observed DCG": 0.0,
         "observed NDCG": 0.0,
         "observed overlap": 0,
+        "observed average positive rank": float("nan"),
+        "observed average precision": 0.0,
+        "observed AUPR": 0.0,
+        "observed AUC": float("nan"),
         "dcg exceed count": permutation_count,
         "overlap exceed count": permutation_count,
         "candidate count": len(candidates),
@@ -590,12 +623,10 @@ def return_zero_true_drugs_left(candidates: DataFrame, permutation_count: int, t
         "background size": background_size,
         "positive percentage": positive_percentage,
         "percent true drugs found": 0.0,
-        "observed average precision": 0.0,
-        "observed AUPR": 0.0,
-        "observed AUC": float("nan"),
         "true drugs original count": true_drugs_original_count,
         "true drugs removed count": true_drugs_removed_count,
         "true drugs left count": true_drugs_left_count,
+        "true drug ranks json": "[]",
     }
 
 

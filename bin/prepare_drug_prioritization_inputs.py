@@ -562,7 +562,7 @@ def add_drug_metadata_to_pdi(
     merged["approved"] = merged["approved"].fillna(False).astype(bool)
     return merged
 
-
+ #todo remove bogus copy statements
 def filter_approved_drug_interactions(
     pdi: pd.DataFrame,
     include_non_approved_drugs: bool,
