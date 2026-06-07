@@ -33,7 +33,7 @@ process DOWNLOADDRUGLIST {
 
 process PRIORITIZATIONEVALUATION {
 
-  tag "$meta.id"
+  tag "$meta.id.$algorithm"
   label 'process_single'
   container 'ghcr.io/ingiumdev/modulediscovery_python_dependencies:main'
   memory = 3.GB
@@ -48,7 +48,7 @@ process PRIORITIZATIONEVALUATION {
     tuple val(meta), val(algorithm), path(prediction_file), path(true_drugs), path(drug_background)
 
   output:
-    tuple val(meta), val(algorithm), path("${meta.id}.prioritization_evaluation.tsv"), emit: prioritization_evaluation
+    tuple val(meta), val(algorithm), path("${meta.id}.${algorithm}.prioritization_evaluation.tsv"), emit: prioritization_evaluation
   script:
   """
   drug_validation.py \
@@ -57,7 +57,7 @@ process PRIORITIZATIONEVALUATION {
       --true-drugs      ${true_drugs} \
       --out-dir         . \
       --permutation-count ${params.eval_permutations} \
-      --output-file     ${meta.id}.prioritization_evaluation.tsv
+      --output-file     ${meta.id}.${algorithm}.prioritization_evaluation.tsv
   """
 }
 
