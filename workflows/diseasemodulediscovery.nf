@@ -518,7 +518,16 @@ workflow DISEASEMODULEDISCOVERY {
             algorithm == 'network_proximity' || algorithm == 'network_separation'
         }
         def drug_ch = DOWNLOAD_DRUG('drug')
-        def drug_has_target_ch = DOWNLOAD_DRUG_HAS_TARGET('drug_has_target')
+        def drug_has_target_ch
+        if(params.drug_has_target){
+            log.info "Using custom NeDREx-compatible drug-target interactions: ${params.drug_has_target}"
+            drug_has_target_ch = Channel.value(file(params.drug_has_target, checkIfExists: true))
+            if(params.run_drugstone_api_predictions){
+                log.warn "Custom --drug_has_target interactions apply to offline prioritization only; online Drugst.One predictions use the remote Drugst.One interaction network."
+            }
+        } else {
+            drug_has_target_ch = DOWNLOAD_DRUG_HAS_TARGET('drug_has_target')
+        }
 
         PREPAREDRUGPRIORITIZATIONINPUTS(
             ch_network_gt,

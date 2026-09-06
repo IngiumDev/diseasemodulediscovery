@@ -266,6 +266,15 @@
                     "description": "Local path to the drug to targets file used for proximity.",
                     "hidden": true
                 },
+                "drug_has_target": {
+                    "type": "string",
+                    "format": "file-path",
+                    "pattern": "^\\S+\\.csv$",
+                    "mimetype": "text/csv",
+                    "fa_icon": "fas fa-file-csv",
+                    "description": "Optional local NeDREx-compatible drug_has_target CSV used by offline drug prioritization and generated true-drug lists. If omitted, the collection is downloaded from NeDREx.",
+                    "help_text": "The file must be comma-separated with a header containing sourceDomainId and targetDomainId. sourceDomainId values must be NeDREx/DrugBank identifiers present in the downloaded NeDREx drug metadata, for example drugbank.DB00001. targetDomainId values must be UniProt identifiers, for example uniprot.P00734. Additional NeDREx columns are allowed. One file is reused for every PPI network in the run."
+                },
                 "skip_drug_predictions": {
                     "type": "boolean",
                     "description": "Flag for skipping drug predictions",

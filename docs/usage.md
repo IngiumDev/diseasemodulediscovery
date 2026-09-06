@@ -52,6 +52,30 @@ This will launch the pipeline with the `docker` configuration profile. See below
 
 `--id_space` has to indicate the ID space your genes or proteins are using. For genes Entrez IDs, Ensembl IDs, and HGNC Symbols are supported. For proteins UniProt-AC IDs are supported.
 
+### Custom drug-target interactions
+
+Offline drug prioritization uses the NeDREx `drug_has_target` collection by default. To use your own protein-drug interaction network with the same downstream preparation and filtering steps, provide a NeDREx-compatible comma-separated file with `--drug_has_target`:
+
+```bash
+nextflow run nf-core/diseasemodulediscovery \
+   -profile docker \
+   --seeds ./seeds.txt \
+   --network ./ppi.csv \
+   --id_space entrez \
+   --drug_has_target ./drug_has_target.csv \
+   --outdir ./results
+```
+
+The CSV must have a header containing at least `sourceDomainId` and `targetDomainId`:
+
+```csv title="drug_has_target.csv"
+sourceDomainId,targetDomainId
+drugbank.DB00001,uniprot.P00734
+drugbank.DB00002,uniprot.P00533
+```
+
+Drug identifiers must correspond to entries in the NeDREx drug metadata downloaded by the pipeline, and protein targets must use UniProt identifiers. Additional NeDREx columns are allowed. The same custom file is reused for every PPI network in the run and when true-drug lists are generated from disease IDs. Online Drugst.One predictions continue to use the remote Drugst.One interaction network.
+
 Note that the pipeline will create the following files in your working directory:
 
 ```bash
